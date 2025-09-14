@@ -4,7 +4,7 @@ Streamlit BI Dashboard for Marketing Intelligence Assessment
 Usage:
     streamlit run streamlit_bi_dashboard.py
 
-Files required (place in same folder or upload via UI):
+Files required (place in datasets/ folder):
     - Facebook.csv
     - Google.csv
     - TikTok.csv
@@ -26,34 +26,44 @@ import pandas as pd
 import numpy as np
 import plotly.express as px
 import plotly.graph_objects as go
+import os
 
 st.set_page_config(layout="wide", page_title="Marketing Intelligence Dashboard")
 
-# ===================== File Upload =====================
-st.title("Upload Marketing & Business Data")
-st.markdown("Upload raw marketing and business CSV files. The app will merge, clean, and prepare them for analysis.")
+# ===================== File Loading =====================
+st.title("Marketing Intelligence Dashboard")
+st.markdown("Automatically loading data from the datasets/ folder.")
 
-col1, col2 = st.columns(2)
-with col1:
-    fb_file = st.file_uploader("Upload Facebook.csv", type="csv")
-    g_file = st.file_uploader("Upload Google.csv", type="csv")
-    t_file = st.file_uploader("Upload TikTok.csv", type="csv")
-with col2:
-    b_file = st.file_uploader("Upload Business.csv", type="csv")
+# Define file paths
+dataset_folder = "datasets"
+fb_path = os.path.join(dataset_folder, "Facebook.csv")
+g_path = os.path.join(dataset_folder, "Google.csv")
+t_path = os.path.join(dataset_folder, "TikTok.csv")
+b_path = os.path.join(dataset_folder, "Business.csv")
+
+# Check if files exist
+files_exist = all(os.path.exists(path) for path in [fb_path, g_path, t_path, b_path])
+
+if not files_exist:
+    st.error("❌ Missing CSV files. Please ensure all files are in the datasets/ folder:")
+    st.write("- Facebook.csv")
+    st.write("- Google.csv")
+    st.write("- TikTok.csv")
+    st.write("- Business.csv")
+    st.stop()
 
 # ===================== Data Load & Prep =====================
 @st.cache_data
-
-def load_and_prepare(fb_file, g_file, t_file, b_file):
+def load_and_prepare(fb_path, g_path, t_path, b_path):
     def norm(df):
         df = df.copy()
         df.columns = [c.strip().lower().replace(" ", "_") for c in df.columns]
         return df
 
-    fb = norm(pd.read_csv(fb_file)); fb["channel"] = "Facebook"
-    g = norm(pd.read_csv(g_file)); g["channel"] = "Google"
-    t = norm(pd.read_csv(t_file)); t["channel"] = "TikTok"
-    b = norm(pd.read_csv(b_file))
+    fb = norm(pd.read_csv(fb_path)); fb["channel"] = "Facebook"
+    g = norm(pd.read_csv(g_path)); g["channel"] = "Google"
+    t = norm(pd.read_csv(t_path)); t["channel"] = "TikTok"
+    b = norm(pd.read_csv(b_path))
 
     # unify marketing
     marketing = pd.concat([fb,g,t], ignore_index=True)
@@ -90,9 +100,11 @@ def load_and_prepare(fb_file, g_file, t_file, b_file):
 
     return marketing, m_daily, merged
 
-if all([fb_file,g_file,t_file,b_file]):
-    marketing, marketing_daily, merged = load_and_prepare(fb_file,g_file,t_file,b_file)
-else:
+try:
+    marketing, marketing_daily, merged = load_and_prepare(fb_path, g_path, t_path, b_path)
+    st.success("✅ All datasets loaded successfully!")
+except Exception as e:
+    st.error(f"Error loading data: {str(e)}")
     st.stop()
 
 # ===================== Filters =====================
@@ -113,8 +125,8 @@ k1,k2,k3,k4,k5 = st.columns(5)
 k1.metric("Total Revenue", f"${merged_f['total_revenue'].sum():,.0f}")
 k2.metric("Gross Profit", f"${merged_f['gross_profit'].sum():,.0f}")
 k3.metric("Marketing Spend", f"${merged_f['spend'].sum():,.0f}")
-k4.metric("ROAS", f"{(merged_f['attributed_revenue'].sum()/merged_f['spend'].sum()):.2f}")
-k5.metric("CAC", f"${(merged_f['spend'].sum()/merged_f['new_customers'].sum()):.2f}")
+k4.metric("ROAS", f"{(merged_f['attributed_revenue'].sum()/merged_f['spend'].replace(0,np.nan).sum()):.2f}" if merged_f['spend'].sum() > 0 else "N/A")
+k5.metric("CAC", f"${(merged_f['spend'].sum()/merged_f['new_customers'].replace(0,np.nan).sum()):.2f}" if merged_f['new_customers'].sum() > 0 else "N/A")
 
 # ===================== Trends Over Time =====================
 st.subheader("Revenue & Spend trends")
