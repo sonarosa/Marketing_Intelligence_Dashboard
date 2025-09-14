@@ -4,10 +4,16 @@ Streamlit BI Dashboard for Marketing Intelligence Assessment
 Usage:
     streamlit run streamlit_bi_dashboard.py
 
+Files required (place in same folder or upload via UI):
+    - Facebook.csv
+    - Google.csv
+    - TikTok.csv
+    - Business.csv
+
 Features:
     - Cleans and merges all four datasets
     - Derives KPIs: CTR, CPC, CPM, ROAS, CAC, AOV, Profit Margin
-    - Provides interactive filters (date, channel)
+    - Provides interactive filters (date, channel, state, campaign)
     - Layout: KPI cards, time-series trends, channel comparisons, funnel, campaign table
     - Export merged dataset as CSV
 
@@ -23,18 +29,31 @@ import plotly.graph_objects as go
 
 st.set_page_config(layout="wide", page_title="Marketing Intelligence Dashboard")
 
+# ===================== File Upload =====================
+st.title("Upload Marketing & Business Data")
+st.markdown("Upload raw marketing and business CSV files. The app will merge, clean, and prepare them for analysis.")
+
+col1, col2 = st.columns(2)
+with col1:
+    fb_file = st.file_uploader("Upload Facebook.csv", type="csv")
+    g_file = st.file_uploader("Upload Google.csv", type="csv")
+    t_file = st.file_uploader("Upload TikTok.csv", type="csv")
+with col2:
+    b_file = st.file_uploader("Upload Business.csv", type="csv")
+
 # ===================== Data Load & Prep =====================
 @st.cache_data
-def load_and_prepare():
+
+def load_and_prepare(fb_file, g_file, t_file, b_file):
     def norm(df):
         df = df.copy()
         df.columns = [c.strip().lower().replace(" ", "_") for c in df.columns]
         return df
 
-    fb = norm(pd.read_csv("datasets\Facebook.csv")); fb["channel"] = "Facebook"
-    g = norm(pd.read_csv("datasets\Google.csv")); g["channel"] = "Google"
-    t = norm(pd.read_csv("datasets\TikTok.csv")); t["channel"] = "TikTok"
-    b = norm(pd.read_csv("datasets\business.csv"))
+    fb = norm(pd.read_csv(fb_file)); fb["channel"] = "Facebook"
+    g = norm(pd.read_csv(g_file)); g["channel"] = "Google"
+    t = norm(pd.read_csv(t_file)); t["channel"] = "TikTok"
+    b = norm(pd.read_csv(b_file))
 
     # unify marketing
     marketing = pd.concat([fb,g,t], ignore_index=True)
@@ -71,7 +90,10 @@ def load_and_prepare():
 
     return marketing, m_daily, merged
 
-marketing, marketing_daily, merged = load_and_prepare()
+if all([fb_file,g_file,t_file,b_file]):
+    marketing, marketing_daily, merged = load_and_prepare(fb_file,g_file,t_file,b_file)
+else:
+    st.stop()
 
 # ===================== Filters =====================
 st.sidebar.header("Interactive Filters")
