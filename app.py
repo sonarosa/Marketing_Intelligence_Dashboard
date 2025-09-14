@@ -38,13 +38,15 @@ st.markdown("Automatically loading data from the datasets/ folder.")
 # Define file paths
 import os
 
+import os
+
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 dataset_folder = os.path.join(BASE_DIR, "datasets")
 
 fb_path = os.path.join(dataset_folder, "Facebook.csv")
 g_path = os.path.join(dataset_folder, "Google.csv")
 t_path = os.path.join(dataset_folder, "TikTok.csv")
-b_path = os.path.join(dataset_folder, "usiness.csv")
+b_path = os.path.join(dataset_folder, "business.csv")
 
 # Check if files exist
 files_exist = all(os.path.exists(path) for path in [fb_path, g_path, t_path, b_path])
