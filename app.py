@@ -164,4 +164,3 @@ else:
 # ------------------- Export -------------------
 st.sidebar.header('Export')
 st.sidebar.download_button('Download merged CSV', data=merged.to_csv(index=False), file_name='merged_data.csv')
-st.sidebar.markdown('Data merged from all four datasets with derived KPIs.')
