@@ -36,7 +36,9 @@ st.markdown("Automatically loading data from the datasets/ folder.")
 
 # Define file paths
 # Define file paths
-dataset_folder = os.path.join("Marketing_Intelligence_Dashboard", "datasets")
+import os
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+dataset_folder = os.path.join(BASE_DIR, "datasets")
 fb_path = os.path.join(dataset_folder, "Facebook.csv")
 g_path = os.path.join(dataset_folder, "Google.csv")
 t_path = os.path.join(dataset_folder, "TikTok.csv")
