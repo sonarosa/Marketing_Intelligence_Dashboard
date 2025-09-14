@@ -20,6 +20,7 @@ import pandas as pd
 import numpy as np
 import plotly.express as px
 import plotly.graph_objects as go
+import os
 
 st.set_page_config(layout="wide", page_title="Marketing Intelligence Dashboard")
 
@@ -31,10 +32,11 @@ def load_and_prepare():
         df.columns = [c.strip().lower().replace(" ", "_") for c in df.columns]
         return df
 
-    fb = norm(pd.read_csv("datasets\Facebook.csv")); fb["channel"] = "Facebook"
-    g = norm(pd.read_csv("datasets\Google.csv")); g["channel"] = "Google"
-    t = norm(pd.read_csv("datasets\TikTok.csv")); t["channel"] = "TikTok"
-    b = norm(pd.read_csv("datasets\business.csv"))
+    base_path = os.path.join("datasets")  # use relative datasets/ folder
+    fb = norm(pd.read_csv(os.path.join(base_path, "Facebook.csv"))); fb["channel"] = "Facebook"
+    g = norm(pd.read_csv(os.path.join(base_path, "Google.csv"))); g["channel"] = "Google"
+    t = norm(pd.read_csv(os.path.join(base_path, "TikTok.csv"))); t["channel"] = "TikTok"
+    b = norm(pd.read_csv(os.path.join(base_path, "business.csv")))
 
     # unify marketing
     marketing = pd.concat([fb,g,t], ignore_index=True)
