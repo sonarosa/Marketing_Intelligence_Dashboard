@@ -35,7 +35,8 @@ st.title("Marketing Intelligence Dashboard")
 st.markdown("Automatically loading data from the datasets/ folder.")
 
 # Define file paths
-dataset_folder = "datasets"
+# Define file paths
+dataset_folder = os.path.join("Marketing_Intelligence_Dashboard", "datasets")
 fb_path = os.path.join(dataset_folder, "Facebook.csv")
 g_path = os.path.join(dataset_folder, "Google.csv")
 t_path = os.path.join(dataset_folder, "TikTok.csv")
