@@ -4,62 +4,50 @@ Streamlit BI Dashboard for Marketing Intelligence Assessment
 Usage:
     streamlit run streamlit_bi_dashboard.py
 
-Files required (place in datasets/ folder):
+Place CSVs in the `datasets/` folder:
     - Facebook.csv
     - Google.csv
     - TikTok.csv
-    - Business.csv
-
-Features:
-    - Cleans and merges all four datasets
-    - Derives KPIs: CTR, CPC, CPM, ROAS, CAC, AOV, Profit Margin
-    - Provides interactive filters (date, channel, state, campaign)
-    - Layout: KPI cards, time-series trends, channel comparisons, funnel, campaign table
-    - Export merged dataset as CSV
-
-Dependencies:
-    pip install streamlit pandas numpy plotly
+    - business.csv  (case-insensitive)
 """
-
+import os
 import streamlit as st
 import pandas as pd
 import numpy as np
 import plotly.express as px
 import plotly.graph_objects as go
-import os
 
 st.set_page_config(layout="wide", page_title="Marketing Intelligence Dashboard")
 
-# ===================== File Loading =====================
-st.title("Marketing Intelligence Dashboard")
-st.markdown("Automatically loading data from the datasets/ folder.")
+# ------------------- Header -------------------
+st.title("📊 Marketing Intelligence Dashboard")
+st.markdown("Automatically loading data from the `datasets/` folder. Place your CSVs there and reload the app.")
 
-# Define file paths
-# Define file paths
-import os
+# ------------------- Dataset paths & checks -------------------
+DATASET_DIR = "datasets"
+paths = {
+    "Facebook.csv": os.path.join(DATASET_DIR, "Facebook.csv"),
+    "Google.csv": os.path.join(DATASET_DIR, "Google.csv"),
+    "TikTok.csv": os.path.join(DATASET_DIR, "TikTok.csv"),
+}
+# accept either business.csv or Business.csv, prefer lowercase
+business_lower = os.path.join(DATASET_DIR, "business.csv")
+business_upper = os.path.join(DATASET_DIR, "Business.csv")
+paths["business.csv"] = business_lower if os.path.exists(business_lower) else business_upper
 
-import os
-
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-dataset_folder = os.path.join(BASE_DIR, "datasets")
-
-fb_path = os.path.join(dataset_folder, "Facebook.csv")
-g_path = os.path.join(dataset_folder, "Google.csv")
-t_path = os.path.join(dataset_folder, "TikTok.csv")
-b_path = os.path.join(dataset_folder, "business.csv")
-
-# Check if files exist
-files_exist = all(os.path.exists(path) for path in [fb_path, g_path, t_path, b_path])
-
-if not files_exist:
-    st.error("❌ Missing CSV files. Please ensure all files are in the datasets/ folder:")
-    st.write("- Facebook.csv")
-    st.write("- Google.csv")
-    st.write("- TikTok.csv")
-    st.write("- Business.csv")
+missing = [name for name, p in paths.items() if not os.path.exists(p)]
+if missing:
+    st.error("❌ Missing CSV files. Please ensure these files are in the `datasets/` folder:")
+    for m in missing:
+        st.write(f"- `{m}`")
     st.stop()
 
-# ===================== Data Load & Prep =====================
+FB_PATH = paths["Facebook.csv"]
+G_PATH = paths["Google.csv"]
+T_PATH = paths["TikTok.csv"]
+B_PATH = paths["business.csv"]
+
+# ------------------- Data load & prep -------------------
 @st.cache_data
 def load_and_prepare(fb_path, g_path, t_path, b_path):
     def norm(df):
@@ -72,111 +60,126 @@ def load_and_prepare(fb_path, g_path, t_path, b_path):
     t = norm(pd.read_csv(t_path)); t["channel"] = "TikTok"
     b = norm(pd.read_csv(b_path))
 
-    # unify marketing
-    marketing = pd.concat([fb,g,t], ignore_index=True)
+    marketing = pd.concat([fb, g, t], ignore_index=True, sort=False)
+
+    # normalize impressions column name
     if "impression" in marketing.columns and "impressions" not in marketing.columns:
         marketing["impressions"] = marketing["impression"]
-    if "attributed_revenue" not in marketing.columns:
-        alt = [c for c in marketing.columns if "attributed" in c]
-        marketing["attributed_revenue"] = marketing[alt[0]] if alt else 0.0
 
-    for c in ["impressions","clicks","spend","attributed_revenue"]:
-        marketing[c] = pd.to_numeric(marketing[c], errors="coerce").fillna(0)
+    # find attributed revenue column
+    ar_cols = [c for c in marketing.columns if "attribut" in c]
+    if ar_cols:
+        marketing["attributed_revenue"] = pd.to_numeric(marketing[ar_cols[0]], errors="coerce").fillna(0)
+    else:
+        marketing["attributed_revenue"] = 0.0
 
-    # business cleanup
-    b = b.rename(columns={"#_of_orders":"orders","#_of_new_orders":"new_orders"})
-    for c in ["orders","new_orders","new_customers","total_revenue","gross_profit","cogs"]:
-        b[c] = pd.to_numeric(b[c], errors="coerce").fillna(0) if c in b.columns else 0
+    # ensure numeric fields
+    for c in ["impressions", "clicks", "spend", "attributed_revenue"]:
+        marketing[c] = pd.to_numeric(marketing.get(c, 0), errors="coerce").fillna(0)
 
-    for df in [marketing,b]:
-        df["date"] = pd.to_datetime(df["date"]).dt.date
+    # business cleanup: normalize column names and ensure columns exist as Series
+    b = b.rename(columns={c: c.strip().lower().replace(" ", "_") for c in b.columns})
+    for col in ["orders", "new_orders", "new_customers", "total_revenue", "gross_profit", "cogs"]:
+        if col in b.columns:
+            b[col] = pd.to_numeric(b[col], errors="coerce").fillna(0)
+        else:
+            b[col] = 0
 
-    # aggregate
-    m_daily = marketing.groupby(["date","channel"]).agg({"impressions":"sum","clicks":"sum","spend":"sum","attributed_revenue":"sum"}).reset_index()
-    m_total = m_daily.groupby("date").agg({"impressions":"sum","clicks":"sum","spend":"sum","attributed_revenue":"sum"}).reset_index()
-    merged = pd.merge(b,m_total,on="date",how="left").fillna(0)
+    # dates
+    marketing["date"] = pd.to_datetime(marketing["date"]).dt.date
+    b["date"] = pd.to_datetime(b["date"]).dt.date
 
-    # derived metrics
-    merged["ctr"] = merged["clicks"] / merged["impressions"].replace(0,np.nan)
-    merged["cpc"] = merged["spend"] / merged["clicks"].replace(0,np.nan)
-    merged["cpm"] = (merged["spend"] / merged["impressions"].replace(0,np.nan))*1000
-    merged["roas"] = merged["attributed_revenue"] / merged["spend"].replace(0,np.nan)
-    merged["cac"] = merged["spend"] / merged["new_customers"].replace(0,np.nan)
-    merged["aov"] = merged["total_revenue"] / merged["orders"].replace(0,np.nan)
-    merged["profit_margin"] = merged["gross_profit"] / merged["total_revenue"].replace(0,np.nan)
+    # aggregate marketing daily by channel
+    m_daily = marketing.groupby(["date", "channel"], as_index=False).agg({
+        "impressions": "sum", "clicks": "sum", "spend": "sum", "attributed_revenue": "sum"
+    })
+
+    # totals per date across channels
+    m_total = m_daily.groupby("date", as_index=False).agg({
+        "impressions": "sum", "clicks": "sum", "spend": "sum", "attributed_revenue": "sum"
+    })
+
+    # merge with business on date
+    merged = pd.merge(b, m_total, on="date", how="left").fillna(0)
+
+    # derived metrics (guard divisions)
+    merged["ctr"] = merged["clicks"] / merged["impressions"].replace(0, np.nan)
+    merged["cpc"] = merged["spend"] / merged["clicks"].replace(0, np.nan)
+    merged["cpm"] = (merged["spend"] / merged["impressions"].replace(0, np.nan)) * 1000
+    merged["roas"] = merged["attributed_revenue"] / merged["spend"].replace(0, np.nan)
+    merged["cac"] = merged["spend"] / merged["new_customers"].replace(0, np.nan)
+    merged["aov"] = merged["total_revenue"] / merged["orders"].replace(0, np.nan)
+    merged["profit_margin"] = merged["gross_profit"] / merged["total_revenue"].replace(0, np.nan)
 
     return marketing, m_daily, merged
 
 try:
-    marketing, marketing_daily, merged = load_and_prepare(fb_path, g_path, t_path, b_path)
-    st.success("✅ All datasets loaded successfully!")
+    marketing, marketing_daily, merged = load_and_prepare(FB_PATH, G_PATH, T_PATH, B_PATH)
+    st.success("✅ All datasets loaded successfully.")
 except Exception as e:
-    st.error(f"Error loading data: {str(e)}")
+    st.error(f"Error loading data: {e}")
     st.stop()
 
-# ===================== Filters =====================
+# ------------------- Filters -------------------
 st.sidebar.header("Interactive Filters")
-st.sidebar.markdown("Use these to slice data by period or channel.")
 min_d, max_d = merged["date"].min(), merged["date"].max()
-date_range = st.sidebar.date_input("Date range", [min_d,max_d], min_value=min_d, max_value=max_d)
-channels = st.sidebar.multiselect("Select Channels", marketing_daily["channel"].unique(), default=list(marketing_daily["channel"].unique()))
+date_range = st.sidebar.date_input("Date range", [min_d, max_d], min_value=min_d, max_value=max_d)
+channels = st.sidebar.multiselect("Select Channels", options=marketing_daily["channel"].unique(), default=list(marketing_daily["channel"].unique()))
 
-merged_f = merged[(merged["date"]>=date_range[0])&(merged["date"]<=date_range[1])]
-marketing_daily_f = marketing_daily[(marketing_daily["date"]>=date_range[0])&(marketing_daily["date"]<=date_range[1])&(marketing_daily["channel"].isin(channels))]
+merged_f = merged[(merged["date"] >= date_range[0]) & (merged["date"] <= date_range[1])]
+marketing_daily_f = marketing_daily[(marketing_daily["date"] >= date_range[0]) & (marketing_daily["date"] <= date_range[1]) & (marketing_daily["channel"].isin(channels))]
 
-# ===================== KPI Cards =====================
+# ------------------- KPI Cards -------------------
 st.subheader("📊 Business Pulse: Key KPIs")
-st.markdown("Top-line indicators of growth, profitability, and marketing efficiency.")
-
-k1,k2,k3,k4,k5 = st.columns(5)
+k1, k2, k3, k4, k5 = st.columns(5)
 k1.metric("Total Revenue", f"${merged_f['total_revenue'].sum():,.0f}")
 k2.metric("Gross Profit", f"${merged_f['gross_profit'].sum():,.0f}")
 k3.metric("Marketing Spend", f"${merged_f['spend'].sum():,.0f}")
-k4.metric("ROAS", f"{(merged_f['attributed_revenue'].sum()/merged_f['spend'].replace(0,np.nan).sum()):.2f}" if merged_f['spend'].sum() > 0 else "N/A")
-k5.metric("CAC", f"${(merged_f['spend'].sum()/merged_f['new_customers'].replace(0,np.nan).sum()):.2f}" if merged_f['new_customers'].sum() > 0 else "N/A")
+roas_val = merged_f['attributed_revenue'].sum() / (merged_f['spend'].sum() or np.nan)
+k4.metric("ROAS", f"{roas_val:.2f}" if not np.isnan(roas_val) else "N/A")
+cac_val = merged_f['spend'].sum() / (merged_f['new_customers'].sum() or np.nan)
+k5.metric("CAC", f"${cac_val:.2f}" if not np.isnan(cac_val) else "N/A")
 
-# ===================== Trends Over Time =====================
+# ------------------- Time Series -------------------
 st.subheader("Revenue & Spend trends")
-st.markdown("Visualizing daily spend vs revenue vs profit to track overall momentum.")
-
 fig = go.Figure()
 fig.add_trace(go.Scatter(x=merged_f["date"], y=merged_f["spend"], name="Spend"))
 fig.add_trace(go.Scatter(x=merged_f["date"], y=merged_f["total_revenue"], name="Revenue"))
 fig.add_trace(go.Scatter(x=merged_f["date"], y=merged_f["gross_profit"], name="Gross Profit"))
-st.plotly_chart(fig,use_container_width=True)
+st.plotly_chart(fig, use_container_width=True)
 
-# ===================== Channel Deep Dive =====================
+# ------------------- Channel Comparison -------------------
 st.subheader("Channel Efficiency & Scale")
-st.markdown("Compare how different platforms perform in terms of spend, returns, and engagement.")
+channel_agg = marketing_daily_f.groupby("channel", as_index=False).agg({
+    "spend": "sum", "attributed_revenue": "sum", "impressions": "sum", "clicks": "sum"
+})
+channel_agg["roas"] = channel_agg["attributed_revenue"] / channel_agg["spend"].replace(0, np.nan)
+channel_agg["ctr"] = channel_agg["clicks"] / channel_agg["impressions"].replace(0, np.nan)
 
-channel_agg = marketing_daily_f.groupby("channel").agg({"spend":"sum","attributed_revenue":"sum","impressions":"sum","clicks":"sum"}).reset_index()
-channel_agg["roas"] = channel_agg["attributed_revenue"]/channel_agg["spend"].replace(0,np.nan)
-channel_agg["ctr"] = channel_agg["clicks"]/channel_agg["impressions"].replace(0,np.nan)
-
-c1,c2 = st.columns(2)
+c1, c2 = st.columns(2)
 with c1:
-    st.plotly_chart(px.bar(channel_agg,x="channel",y=["spend","attributed_revenue"],barmode="group",title="Spend vs Revenue by Channel"),use_container_width=True)
+    st.plotly_chart(px.bar(channel_agg, x="channel", y=["spend", "attributed_revenue"], barmode="group", title="Spend vs Revenue by Channel"), use_container_width=True)
 with c2:
-    st.plotly_chart(px.scatter(channel_agg,x="spend",y="roas",size="impressions",hover_name="channel",title="Spend vs ROAS"),use_container_width=True)
+    st.plotly_chart(px.scatter(channel_agg, x="spend", y="roas", size="impressions", hover_name="channel", title="Spend vs ROAS"), use_container_width=True)
 
-# ===================== Conversion Funnel =====================
+# ------------------- Conversion Funnel -------------------
 st.subheader("Conversion Journey")
-st.markdown("Follow the drop-off from impressions to clicks to actual orders.")
-
 funnel_vals = [marketing_daily_f["impressions"].sum(), marketing_daily_f["clicks"].sum(), merged_f["orders"].sum()]
-fig2 = go.Figure(go.Funnel(y=["Impressions","Clicks","Orders"], x=funnel_vals))
-st.plotly_chart(fig2,use_container_width=True)
+fig2 = go.Figure(go.Funnel(y=["Impressions", "Clicks", "Orders"], x=funnel_vals))
+st.plotly_chart(fig2, use_container_width=True)
 
-# ===================== Campaign Leaderboard =====================
+# ------------------- Campaign Leaderboard -------------------
 st.subheader("Campaign Performance Table")
-st.markdown("Rank campaigns by spend and evaluate efficiency via ROAS.")
-
 if "campaign" in marketing.columns:
-    camp_agg = marketing.groupby(["campaign","channel"]).agg({"spend":"sum","attributed_revenue":"sum","impressions":"sum","clicks":"sum"}).reset_index()
-    camp_agg["roas"] = camp_agg["attributed_revenue"]/camp_agg["spend"].replace(0,np.nan)
-    st.dataframe(camp_agg.sort_values("spend",ascending=False))
+    camp_agg = marketing.groupby(["campaign", "channel"], as_index=False).agg({
+        "spend": "sum", "attributed_revenue": "sum", "impressions": "sum", "clicks": "sum"
+    })
+    camp_agg["roas"] = camp_agg["attributed_revenue"] / camp_agg["spend"].replace(0, np.nan)
+    st.dataframe(camp_agg.sort_values("spend", ascending=False))
+else:
+    st.info("No 'campaign' column found in marketing datasets.")
 
-# ===================== Export =====================
+# ------------------- Export -------------------
 st.sidebar.header("Export Data")
-st.sidebar.markdown("Download the processed dataset for offline analysis.")
+st.sidebar.markdown("Download the processed dataset as CSV.")
 st.sidebar.download_button("Download merged CSV", data=merged.to_csv(index=False), file_name="merged_data.csv")
