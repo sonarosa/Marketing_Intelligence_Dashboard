@@ -1,11 +1,11 @@
-# 📊 Marketing Intelligence Dashboard  
+# Marketing Intelligence Dashboard  
 
 **Hosted demo:**  
 👉 [Streamlit App](https://marketingintelligencedashboard-amkxye6f6mqkaum3mkd3ap.streamlit.app/)  
 
 ---
 
-## 🚀 What We Built  
+## What We Built  
 
 We designed and developed an **interactive BI dashboard** in **Streamlit** that connects **campaign-level marketing data** (Facebook, Google, TikTok) with **daily business performance data**.  
 
@@ -13,9 +13,9 @@ This dashboard helps stakeholders **see where marketing spend goes, which channe
 
 ---
 
-## 📜 Problem Statement  
+## Problem Statement  
 
-You are given **4 CSV datasets** capturing **120 days of daily activity**:  
+Given **4 CSV datasets** capturing **120 days of daily activity**:  
 
 - `Facebook.csv`, `Google.csv`, `TikTok.csv` → campaign-level marketing data:  
   *(date, tactic, state, campaign, impressions, clicks, spend, attributed revenue)*  
@@ -31,7 +31,7 @@ You are given **4 CSV datasets** capturing **120 days of daily activity**:
 
 ---
 
-## ⚡ Features  
+## Features  
 
 - **Automatic data load** from `datasets/` (no uploads needed)  
 - **Derived KPIs**: CTR, CPC, CPM, ROAS, CAC, AOV, Profit Margin  
