@@ -56,14 +56,23 @@ Given **4 CSV datasets** capturing **120 days of daily activity**:
 
 ## Repository Layout  
 Marketing_Intelligence_Dashboard/
-├── streamlit_bi_dashboard.py    # main app
+
+├── app.py    # main app
+
 ├── requirements.txt             # dependencies
+
 ├── environment.yml              # optional conda env
+
 ├── README.md
+
 └── datasets/
+
     ├── Facebook.csv
+    
     ├── Google.csv
+    
     ├── TikTok.csv
+    
     └── business.csv
 
 ##  Setup Instructions
