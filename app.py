@@ -22,7 +22,6 @@ import pandas as pd
 import numpy as np
 import plotly.express as px
 import plotly.graph_objects as go
-import matplotlib.pyplot as plt
 from PIL import Image
 
 # ----------------------- Config -----------------------
@@ -72,21 +71,15 @@ def load_and_prepare(fb_p, g_p, t_p, biz_p):
 
     marketing = pd.concat([fb, g, t], ignore_index=True, sort=False)
 
-    # unify impressions column
     if "impression" in marketing.columns and "impressions" not in marketing.columns:
         marketing["impressions"] = marketing["impression"]
 
-    # attributed revenue detection
     ar_cols = [c for c in marketing.columns if "attribut" in c]
-    if ar_cols:
-        marketing["attributed_revenue"] = pd.to_numeric(marketing[ar_cols[0]], errors="coerce").fillna(0)
-    else:
-        marketing["attributed_revenue"] = 0.0
+    marketing["attributed_revenue"] = pd.to_numeric(marketing[ar_cols[0]], errors="coerce").fillna(0) if ar_cols else 0.0
 
     for c in ["impressions", "clicks", "spend", "attributed_revenue"]:
         marketing[c] = pd.to_numeric(marketing.get(c, 0), errors="coerce").fillna(0)
 
-    # normalize business columns and types
     b = b.rename(columns={c: c.strip().lower().replace(" ", "_") for c in b.columns})
     for col in ["orders", "new_orders", "new_customers", "total_revenue", "gross_profit", "cogs"]:
         if col in b.columns:
@@ -94,23 +87,18 @@ def load_and_prepare(fb_p, g_p, t_p, biz_p):
         else:
             b[col] = 0
 
-    # parse dates
     marketing["date"] = pd.to_datetime(marketing["date"]).dt.date
     b["date"] = pd.to_datetime(b["date"]).dt.date
 
-    # daily per-channel aggregates
-    marketing_daily = marketing.groupby(["date", "channel"], as_index=False).agg({
+    m_daily = marketing.groupby(["date", "channel"], as_index=False).agg({
+        "impressions": "sum", "clicks": "sum", "spend": "sum", "attributed_revenue": "sum"
+    })
+    m_total = m_daily.groupby("date", as_index=False).agg({
         "impressions": "sum", "clicks": "sum", "spend": "sum", "attributed_revenue": "sum"
     })
 
-    # daily totals across channels
-    marketing_totals = marketing_daily.groupby("date", as_index=False).agg({
-        "impressions": "sum", "clicks": "sum", "spend": "sum", "attributed_revenue": "sum"
-    })
+    merged = pd.merge(b, m_total, on="date", how="left").fillna(0)
 
-    merged = pd.merge(b, marketing_totals, on="date", how="left").fillna(0)
-
-    # derived metrics
     merged["ctr"] = merged["clicks"] / merged["impressions"].replace(0, np.nan)
     merged["cpc"] = merged["spend"] / merged["clicks"].replace(0, np.nan)
     merged["cpm"] = (merged["spend"] / merged["impressions"].replace(0, np.nan)) * 1000
@@ -119,7 +107,7 @@ def load_and_prepare(fb_p, g_p, t_p, biz_p):
     merged["aov"] = merged["total_revenue"] / merged["orders"].replace(0, np.nan)
     merged["profit_margin"] = merged["gross_profit"] / merged["total_revenue"].replace(0, np.nan)
 
-    return marketing, marketing_daily, merged
+    return marketing, m_daily, merged
 
 marketing_df, marketing_daily_df, merged_df = load_and_prepare(fb_path, g_path, t_path, biz_path)
 
@@ -269,68 +257,20 @@ else:
 st.sidebar.header("Export")
 st.sidebar.download_button("Download merged CSV", data=merged_filtered.to_csv(index=False), file_name="merged_data.csv", mime="text/csv")
 
-# ----------------------- Matplotlib image helpers (no Chrome) -----------------------
-def _render_time_series_png(df: pd.DataFrame, width=12, height=4) -> bytes:
-    fig, ax = plt.subplots(figsize=(width, height))
-    ax.plot(df['date'], df['spend'], label='Spend')
-    ax.plot(df['date'], df['total_revenue'], label='Revenue')
-    ax.plot(df['date'], df['gross_profit'], label='Gross Profit')
-    ax.set_title('Spend vs Revenue vs Profit')
-    ax.set_xlabel('Date')
-    ax.set_ylabel('USD')
-    ax.legend()
-    fig.autofmt_xdate()
-    buf = io.BytesIO()
-    fig.savefig(buf, format='png', bbox_inches='tight', dpi=150)
-    plt.close(fig)
-    return buf.getvalue()
+# ----------------------- Image export helpers -----------------------
+def _fig_to_png_bytes(fig) -> bytes:
+    """
+    Convert a plotly figure to PNG bytes using kaleido.
+    Requires `kaleido` installed.
+    """
+    try:
+        img_bytes = fig.to_image(format="png", engine="kaleido", width=1200, height=500)
+        return img_bytes
+    except Exception as e:
+        raise RuntimeError(f"Failed to render figure to image. Ensure 'kaleido' is installed. Error: {e}")
 
-def _render_channel_bar_png(df: pd.DataFrame, width=12, height=4) -> bytes:
-    fig, ax = plt.subplots(figsize=(width, height))
-    x = np.arange(len(df))
-    w = 0.35
-    ax.bar(x - w/2, df['spend'], width=w, label='Spend')
-    ax.bar(x + w/2, df['attributed_revenue'], width=w, label='Attributed Revenue')
-    ax.set_xticks(x)
-    ax.set_xticklabels(df['channel'], rotation=45, ha='right')
-    ax.set_title('Spend vs Attributed Revenue by Channel')
-    ax.set_ylabel('USD')
-    ax.legend()
-    buf = io.BytesIO()
-    fig.tight_layout()
-    fig.savefig(buf, format='png', bbox_inches='tight', dpi=150)
-    plt.close(fig)
-    return buf.getvalue()
-
-def _render_channel_scatter_png(df: pd.DataFrame, width=10, height=5) -> bytes:
-    fig, ax = plt.subplots(figsize=(width, height))
-    sizes = (df['impressions'] / (df['impressions'].max() or 1)) * 400 + 20
-    ax.scatter(df['spend'], df['roas'], s=sizes)
-    for i, txt in enumerate(df['channel']):
-        ax.annotate(txt, (df['spend'].iat[i], df['roas'].iat[i]))
-    ax.set_title('Spend vs ROAS (bubble size = impressions)')
-    ax.set_xlabel('Spend')
-    ax.set_ylabel('ROAS')
-    buf = io.BytesIO()
-    fig.savefig(buf, format='png', bbox_inches='tight', dpi=150)
-    plt.close(fig)
-    return buf.getvalue()
-
-def _render_funnel_png(impr, clicks, orders, width=8, height=3) -> bytes:
-    fig, ax = plt.subplots(figsize=(width, height))
-    stages = ['Impressions', 'Clicks', 'Orders']
-    values = [impr, clicks, orders]
-    ax.barh(stages, values, color=['#4C78A8', '#F58518', '#E45756'])
-    ax.set_title('Conversion Funnel')
-    ax.set_xlabel('Count')
-    buf = io.BytesIO()
-    fig.tight_layout()
-    fig.savefig(buf, format='png', bbox_inches='tight', dpi=150)
-    plt.close(fig)
-    return buf.getvalue()
-
-def _stitch_pngs_vertically(img_bytes_list: List[bytes], bg_color=(255,255,255)) -> bytes:
-    imgs = [Image.open(io.BytesIO(b)).convert("RGB") for b in img_bytes_list]
+def _stitch_images_vertically(img_bytes_list: List[bytes], bg_color=(255,255,255)) -> bytes:
+    imgs = [Image.open(io.BytesIO(b)) for b in img_bytes_list]
     widths = [im.width for im in imgs]
     heights = [im.height for im in imgs]
     max_width = max(widths)
@@ -341,46 +281,30 @@ def _stitch_pngs_vertically(img_bytes_list: List[bytes], bg_color=(255,255,255))
         canvas.paste(im, (0, y))
         y += im.height
     buf = io.BytesIO()
-    canvas.save(buf, format='PNG')
+    canvas.save(buf, format="PNG")
     return buf.getvalue()
 
-# ----------------------- Export report as PNG (matplotlib) -----------------------
+# ----------------------- Export report as image -----------------------
 st.sidebar.markdown("Report snapshot")
 if st.sidebar.button("Generate PNG report"):
     try:
-        # prepare small dataframes
-        ts_export_df = ts_df.copy()
-        ch_bar_df = channel_agg.copy() if not channel_agg.empty else pd.DataFrame({
-            "channel": [], "spend": [], "attributed_revenue": [], "impressions": [], "clicks": [], "roas": []
-        })
-        ch_scat_df = channel_agg.copy()
-        funnel_vals_local = [marketing_filtered["impressions"].sum(), marketing_filtered["clicks"].sum(), merged_filtered["orders"].sum()]
-
-        pngs = []
-        pngs.append(_render_time_series_png(ts_export_df))
-        pngs.append(_render_channel_bar_png(ch_bar_df))
-        pngs.append(_render_channel_scatter_png(ch_scat_df))
-        pngs.append(_render_funnel_png(*funnel_vals_local))
-
-        # optional state heatmap if exists
+        # collect figures to include
+        figs = []
+        figs.append(fig_ts)          # time series
+        figs.append(fig_ch_bar)      # channel bar
+        figs.append(fig_ch_scatter)  # channel scatter
+        figs.append(fig_funnel)      # funnel
+        # optional heatmap
         if "fig_state_heat" in locals():
-            # render plotly heatmap to static image via matplotlib fallback:
-            # convert pivot_roas to matrix image
-            pivot_roas_local = pivot_roas.copy()
-            fig, ax = plt.subplots(figsize=(10, max(2, pivot_roas_local.shape[0]*0.5)))
-            im = ax.imshow(pivot_roas_local.fillna(0).values, aspect='auto')
-            ax.set_xticks(np.arange(len(pivot_roas_local.columns)))
-            ax.set_xticklabels(pivot_roas_local.columns, rotation=45, ha='right')
-            ax.set_yticks(np.arange(len(pivot_roas_local.index)))
-            ax.set_yticklabels(pivot_roas_local.index)
-            fig.colorbar(im, ax=ax)
-            buf = io.BytesIO(); fig.tight_layout(); fig.savefig(buf, format='png', bbox_inches='tight', dpi=150); plt.close(fig)
-            pngs.append(buf.getvalue())
-
-        stitched = _stitch_pngs_vertically(pngs)
+            figs.append(fig_state_heat)
+        # convert each fig to png
+        png_bytes_list = []
+        for f in figs:
+            png_bytes_list.append(_fig_to_png_bytes(f))
+        stitched = _stitch_images_vertically(png_bytes_list)
         st.sidebar.download_button("Download PNG report", data=stitched, file_name="marketing_report.png", mime="image/png")
         st.sidebar.success("PNG report ready for download.")
     except Exception as err:
         st.sidebar.error(f"Image generation failed: {err}")
-
 # ----------------------- End -----------------------
+
