@@ -54,7 +54,9 @@ Given **4 CSV datasets** capturing **120 days of daily activity**:
 
 ---
 
-## Repository Layout  
+## Repository Structure
+
+```plaintext
 Marketing_Intelligence_Dashboard/
 ├── app.py                # main app
 ├── requirements.txt      # dependencies
@@ -65,6 +67,7 @@ Marketing_Intelligence_Dashboard/
     ├── Google.csv
     ├── TikTok.csv
     └── business.csv
+
 
 ##  Setup Instructions
 
