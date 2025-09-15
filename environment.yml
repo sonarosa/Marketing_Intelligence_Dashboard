@@ -1,0 +1,12 @@
+name: marketing_dashboard
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.11
+  - streamlit>=1.36.0
+  - pandas>=2.0.0
+  - numpy>=1.25.0
+  - plotly>=5.20.0
+  - kaleido>=0.2.1
+  - pillow>=10.0.0
