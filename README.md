@@ -68,7 +68,7 @@ Marketing_Intelligence_Dashboard/
     ├── TikTok.csv
     └── business.csv
 
-
+```
 ##  Setup Instructions
 
 ### 2. Create Python Environment
