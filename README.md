@@ -1,127 +1,137 @@
-# Marketing_Intelligence_Dashboard
-# 📊 Marketing Intelligence Report — Streamlit Dashboard
+# 📊 Marketing Intelligence Dashboard  
 
-**Purpose**  
-Interactive BI dashboard that links campaign-level marketing activity (Facebook, Google, TikTok) to daily business outcomes. Designed to answer where marketing spend goes, which channels are efficient, and whether marketing drives profitable growth.
-
----
-
-## Features
-
-- Loads and cleans 4 CSVs from `datasets/`: `Facebook.csv`, `Google.csv`, `TikTok.csv`, `business.csv`.
-- Aggregates campaign-level marketing data to daily totals and joins with business daily metrics.
-- Derived KPIs: CTR, CPC, CPM, ROAS, CAC, AOV, Profit Margin.
-- Interactive filters: date range and channel.
-- Visuals: KPI cards, time-series (Spend vs Revenue vs Profit), channel comparison, conversion funnel, campaign leaderboard.
-- Export merged dataset as CSV.
+**Hosted demo:**  
+👉 [Streamlit App](https://marketingintelligencedashboard-amkxye6f6mqkaum3mkd3ap.streamlit.app/)  
 
 ---
 
-## Repo layout
+## 🚀 What We Built  
 
-project/
-├── streamlit_bi_dashboard.py
-├── requirements.txt
-├── environment.yml # optional conda env
+We designed and developed an **interactive BI dashboard** in **Streamlit** that connects **campaign-level marketing data** (Facebook, Google, TikTok) with **daily business performance data**.  
+
+This dashboard helps stakeholders **see where marketing spend goes, which channels are efficient, and whether spend drives profitable growth**.  
+
+---
+
+## 📜 Problem Statement  
+
+You are given **4 CSV datasets** capturing **120 days of daily activity**:  
+
+- `Facebook.csv`, `Google.csv`, `TikTok.csv` → campaign-level marketing data:  
+  *(date, tactic, state, campaign, impressions, clicks, spend, attributed revenue)*  
+- `business.csv` → business performance data:  
+  *(date, orders, new_orders, new_customers, total_revenue, gross_profit, COGS)*  
+
+**Objective:**  
+- Merge & clean datasets  
+- Aggregate campaign → daily totals by channel  
+- Derive efficiency metrics (ROAS, CAC, AOV, CTR, CPC, CPM, Profit Margin)  
+- Build interactive dashboard with **filters, KPIs, charts, anomaly alerts, exports**  
+- Deploy as a **hosted Streamlit app**  
+
+---
+
+## ⚡ Features  
+
+- **Automatic data load** from `datasets/` (no uploads needed)  
+- **Derived KPIs**: CTR, CPC, CPM, ROAS, CAC, AOV, Profit Margin  
+- **Interactive filters**:  
+  - Date range  
+  - Channel  
+  - State (if available)  
+  - Campaign substring search  
+- **Visualizations**:  
+  - KPI cards  
+  - Time-series (Spend vs Revenue vs Profit)  
+  - Channel comparison (bar + scatter)  
+  - Conversion funnel (Impressions → Clicks → Orders)  
+  - ROAS by state heatmap *(if data has `state` column)*  
+- **Anomaly alerts**:  
+  - Spend spikes (std. deviation based threshold)  
+  - Low ROAS days  
+- **Campaign leaderboard** ranked by spend and ROAS  
+- **Export merged dataset** as CSV  
+
+---
+
+## Repository Layout  
+Marketing_Intelligence_Dashboard/
+├── streamlit_bi_dashboard.py    # main app
+├── requirements.txt             # dependencies
+├── environment.yml              # optional conda env
+├── README.md
 └── datasets/
-├── Facebook.csv
-├── Google.csv
-├── TikTok.csv
-└── business.csv
+    ├── Facebook.csv
+    ├── Google.csv
+    ├── TikTok.csv
+    └── business.csv
 
+##  Setup Instructions
 
----
+### 2. Create Python Environment
 
-## ⚙️ Installation
-
-### 1. Clone this repository
+**Option A — venv**
 ```bash
-git clone https://github.com/<your-username>/marketing_intelligence_dashboard.git
-cd marketing_intelligence_dashboard
-
-. Create Python environment
-🔹 Option A: Using venv
-bash
-# create virtual environment
 python -m venv .venv
 
-# activate environment
 # macOS / Linux
 source .venv/bin/activate
 
 # Windows (PowerShell)
 .venv\Scripts\Activate
-
-3. Install dependencies
-bash
+```
+### 3. Create Conda Environment
+**Option B — conda**
+```bash
+conda env create -f environment.yml
+conda activate marketing_dashboard
+```
+### 4. Create Conda Environment
+**Create requirements.txt**
+```bash
 pip install -r requirements.txt
-▶️ Run Locally
-Make sure your CSVs are in the datasets/ folder.
+```
+```bash
+streamlit>=1.36.0
+pandas>=2.0.0
+numpy>=1.25.0
+plotly>=5.20.0
+```
 
-bash
-streamlit run streamlit_bi_dashboard.py
-Open in your browser at:
-👉 http://localhost:8501
+### 5. Place CSVs
 
-🌍 Deployment on Streamlit Cloud
-Push this repo to GitHub.
+Ensure files exist in `datasets/`:
+datasets/Facebook.csv
+datasets/Google.csv
+datasets/TikTok.csv
+datasets/business.csv
 
-Go to Streamlit Cloud.
+---
 
-Click "New app" → connect your GitHub repo.
+### 6. Run Locally
 
-Select:
+```bash
+streamlit run app.py
+```
 
-Repository: your-username/marketing_intelligence_dashboard
+### 7. Deployment (Streamlit Cloud)
+
+1. Push this repo to GitHub:
+```bash
+1. git add .
+2. git commit -m "initial commit"
+3. git push origin main
+```
+
+2. Go to Streamlit Cloud
+
+3. Click New app → select:
+
+Repository: <your-username>/Marketing_Intelligence_Dashboard
 
 Branch: main
 
 File path: streamlit_bi_dashboard.py
 
-Click Deploy 🎉
-
-Your dashboard will be live and shareable!
-
-📖 Business Context
-This dashboard helps business stakeholders understand how marketing activity connects with business outcomes:
-
-Business KPIs: Revenue, Profit, Orders, Customers.
-
-Marketing efficiency: Spend, ROAS, CAC, CTR, CPC.
-
-Channel comparisons: Which platform drives efficient growth?
-
-Funnel leakage: From impressions → clicks → orders.
-
-Campaign drilldown: Identify underperforming vs high-ROI campaigns.
-
-It applies product thinking by surfacing actionable insights, not just raw numbers.
-
-📊 Example Insights
-Facebook drives highest reach (impressions) but lowest ROAS.
-
-TikTok shows strong CTR but high CAC.
-
-Google campaigns deliver the best balance of scale and efficiency.
-
-Profit margin dips when spend spikes without proportional attributed revenue.
-
-🛠️ Tech Stack
-Streamlit — interactive dashboard framework
-
-Pandas — data processing
-
-NumPy — numeric operations
-
-Plotly — charts and visualizations
-
-📌 Requirements
-See requirements.txt:
-
-text
-streamlit>=1.36.0
-pandas>=2.0.0
-numpy>=1.25.0
-plotly>=5.20.0
-📜 License
-This project is for educational & assessment purposes.
+4. Click Deploy
+5. Your app will get deployed successfully in Streamlit
