@@ -1,6 +1,7 @@
 # streamlit_bi_dashboard.py
 """
 Marketing Intelligence Report — Streamlit App
+
 Place CSVs in `datasets/`:
   - datasets/Facebook.csv
   - datasets/Google.csv
@@ -8,17 +9,20 @@ Place CSVs in `datasets/`:
   - datasets/business.csv
 
 Run:
+  pip install -r requirements.txt
   streamlit run streamlit_bi_dashboard.py
 """
 import os
 import io
 import textwrap
 import re
+from typing import List
 import streamlit as st
 import pandas as pd
 import numpy as np
 import plotly.express as px
 import plotly.graph_objects as go
+from PIL import Image
 
 # ----------------------- Config -----------------------
 st.set_page_config(layout="wide", page_title="Marketing Intelligence Report")
@@ -31,85 +35,70 @@ st.markdown(
 )
 
 # ----------------------- File checks -----------------------
-expected_files = {
+expected = {
     "Facebook.csv": os.path.join(DATA_DIR, "Facebook.csv"),
     "Google.csv": os.path.join(DATA_DIR, "Google.csv"),
     "TikTok.csv": os.path.join(DATA_DIR, "TikTok.csv"),
 }
-# business may be business.csv or Business.csv
 business_lower = os.path.join(DATA_DIR, "business.csv")
 business_upper = os.path.join(DATA_DIR, "Business.csv")
-expected_files["business.csv"] = business_lower if os.path.exists(business_lower) else business_upper
+expected["business.csv"] = business_lower if os.path.exists(business_lower) else business_upper
 
-missing_files = [name for name, path in expected_files.items() if not os.path.exists(path)]
-if missing_files:
+missing = [n for n, p in expected.items() if not os.path.exists(p)]
+if missing:
     st.error("Missing CSV files in `datasets/`. Add these files and reload:")
-    for m in missing_files:
+    for m in missing:
         st.write(f"- {m}")
     st.stop()
 
-facebook_path = expected_files["Facebook.csv"]
-google_path = expected_files["Google.csv"]
-tiktok_path = expected_files["TikTok.csv"]
-business_path = expected_files["business.csv"]
+fb_path = expected["Facebook.csv"]
+g_path = expected["Google.csv"]
+t_path = expected["TikTok.csv"]
+biz_path = expected["business.csv"]
 
 # ----------------------- Data load & prepare -----------------------
 @st.cache_data
-def load_and_prepare(fb_path, g_path, t_path, biz_path):
-    def normalize_columns(df):
+def load_and_prepare(fb_p, g_p, t_p, biz_p):
+    def norm_cols(df):
         df = df.copy()
         df.columns = [c.strip().lower().replace(" ", "_") for c in df.columns]
         return df
 
-    fb_df = normalize_columns(pd.read_csv(fb_path)); fb_df["channel"] = "Facebook"
-    g_df = normalize_columns(pd.read_csv(g_path)); g_df["channel"] = "Google"
-    t_df = normalize_columns(pd.read_csv(t_path)); t_df["channel"] = "TikTok"
-    biz_df = normalize_columns(pd.read_csv(biz_path))
+    fb = norm_cols(pd.read_csv(fb_p)); fb["channel"] = "Facebook"
+    g = norm_cols(pd.read_csv(g_p)); g["channel"] = "Google"
+    t = norm_cols(pd.read_csv(t_p)); t["channel"] = "TikTok"
+    b = norm_cols(pd.read_csv(biz_p))
 
-    # combine marketing
-    marketing_df = pd.concat([fb_df, g_df, t_df], ignore_index=True, sort=False)
+    marketing = pd.concat([fb, g, t], ignore_index=True, sort=False)
 
-    # normalize impression(s)
-    if "impression" in marketing_df.columns and "impressions" not in marketing_df.columns:
-        marketing_df["impressions"] = marketing_df["impression"]
+    if "impression" in marketing.columns and "impressions" not in marketing.columns:
+        marketing["impressions"] = marketing["impression"]
 
-    # attributed revenue detection
-    ar_candidates = [c for c in marketing_df.columns if "attribut" in c]
-    if ar_candidates:
-        marketing_df["attributed_revenue"] = pd.to_numeric(marketing_df[ar_candidates[0]], errors="coerce").fillna(0)
-    else:
-        marketing_df["attributed_revenue"] = 0.0
+    ar_cols = [c for c in marketing.columns if "attribut" in c]
+    marketing["attributed_revenue"] = pd.to_numeric(marketing[ar_cols[0]], errors="coerce").fillna(0) if ar_cols else 0.0
 
-    # numeric cast for marketing columns
-    for col in ["impressions", "clicks", "spend", "attributed_revenue"]:
-        marketing_df[col] = pd.to_numeric(marketing_df.get(col, 0), errors="coerce").fillna(0)
+    for c in ["impressions", "clicks", "spend", "attributed_revenue"]:
+        marketing[c] = pd.to_numeric(marketing.get(c, 0), errors="coerce").fillna(0)
 
-    # business numeric fields
-    biz_df = biz_df.rename(columns={c: c.strip().lower().replace(" ", "_") for c in biz_df.columns})
+    b = b.rename(columns={c: c.strip().lower().replace(" ", "_") for c in b.columns})
     for col in ["orders", "new_orders", "new_customers", "total_revenue", "gross_profit", "cogs"]:
-        if col in biz_df.columns:
-            biz_df[col] = pd.to_numeric(biz_df[col], errors="coerce").fillna(0)
+        if col in b.columns:
+            b[col] = pd.to_numeric(b[col], errors="coerce").fillna(0)
         else:
-            biz_df[col] = 0
+            b[col] = 0
 
-    # date columns
-    marketing_df["date"] = pd.to_datetime(marketing_df["date"]).dt.date
-    biz_df["date"] = pd.to_datetime(biz_df["date"]).dt.date
+    marketing["date"] = pd.to_datetime(marketing["date"]).dt.date
+    b["date"] = pd.to_datetime(b["date"]).dt.date
 
-    # daily channel aggregates
-    marketing_daily = marketing_df.groupby(["date", "channel"], as_index=False).agg({
+    m_daily = marketing.groupby(["date", "channel"], as_index=False).agg({
+        "impressions": "sum", "clicks": "sum", "spend": "sum", "attributed_revenue": "sum"
+    })
+    m_total = m_daily.groupby("date", as_index=False).agg({
         "impressions": "sum", "clicks": "sum", "spend": "sum", "attributed_revenue": "sum"
     })
 
-    # daily totals
-    marketing_totals = marketing_daily.groupby("date", as_index=False).agg({
-        "impressions": "sum", "clicks": "sum", "spend": "sum", "attributed_revenue": "sum"
-    })
+    merged = pd.merge(b, m_total, on="date", how="left").fillna(0)
 
-    # merge business with marketing totals
-    merged = pd.merge(biz_df, marketing_totals, on="date", how="left").fillna(0)
-
-    # derived metrics
     merged["ctr"] = merged["clicks"] / merged["impressions"].replace(0, np.nan)
     merged["cpc"] = merged["spend"] / merged["clicks"].replace(0, np.nan)
     merged["cpm"] = (merged["spend"] / merged["impressions"].replace(0, np.nan)) * 1000
@@ -118,114 +107,116 @@ def load_and_prepare(fb_path, g_path, t_path, biz_path):
     merged["aov"] = merged["total_revenue"] / merged["orders"].replace(0, np.nan)
     merged["profit_margin"] = merged["gross_profit"] / merged["total_revenue"].replace(0, np.nan)
 
-    return marketing_df, marketing_daily, merged
+    return marketing, m_daily, merged
 
-marketing_df, marketing_daily_df, merged_df = load_and_prepare(
-    facebook_path, google_path, tiktok_path, business_path
-)
+marketing_df, marketing_daily_df, merged_df = load_and_prepare(fb_path, g_path, t_path, biz_path)
 
 # ----------------------- Sidebar controls -----------------------
 st.sidebar.header("Filters and options")
 min_date, max_date = merged_df["date"].min(), merged_df["date"].max()
 date_range = st.sidebar.date_input("Date range", [min_date, max_date], min_value=min_date, max_value=max_date)
 
-available_channels = sorted(marketing_df["channel"].dropna().unique().tolist())
-selected_channels = st.sidebar.multiselect("Channels", options=available_channels, default=available_channels)
+channels_all = sorted(marketing_df["channel"].dropna().unique().tolist())
+channels_sel = st.sidebar.multiselect("Channels", options=channels_all, default=channels_all)
 
-state_column_exists = "state" in marketing_df.columns
-available_states = sorted(marketing_df["state"].dropna().unique().tolist()) if state_column_exists else []
-selected_states = st.sidebar.multiselect("States", options=available_states, default=available_states if available_states else None)
+states_exist = "state" in marketing_df.columns
+states_all = sorted(marketing_df["state"].dropna().unique().tolist()) if states_exist else []
+states_sel = st.sidebar.multiselect("States", options=states_all, default=states_all if states_all else None)
 
-campaign_column_exists = "campaign" in marketing_df.columns
-campaign_search_text = st.sidebar.text_input("Campaign substring (optional)") if campaign_column_exists else None
+campaign_exist = "campaign" in marketing_df.columns
+campaign_query = st.sidebar.text_input("Campaign substring (optional)") if campaign_exist else None
 
-apply_smoothing = st.sidebar.checkbox("7-day smoothing", value=False)
-time_series_style = st.sidebar.selectbox("Time series type", options=["line", "area", "stacked"])
-roas_threshold_flag = st.sidebar.slider("Flag ROAS <=", 0.0, 5.0, 1.0, 0.1)
-spend_spike_sigma = st.sidebar.slider("Spend spike sigma multiplier", 0.0, 5.0, 2.0, 0.5)
+smooth_7 = st.sidebar.checkbox("7-day smoothing", value=False)
+ts_style = st.sidebar.selectbox("Time series type", options=["line", "area", "stacked"])
+roas_flag = st.sidebar.slider("Flag ROAS <=", 0.0, 5.0, 1.0, 0.1)
+spend_sigma = st.sidebar.slider("Spend spike sigma multiplier", 0.0, 5.0, 2.0, 0.5)
 
 # ----------------------- Apply filters -----------------------
-mask_marketing = (
+mask_mk = (
     (marketing_df["date"] >= date_range[0]) &
     (marketing_df["date"] <= date_range[1]) &
-    (marketing_df["channel"].isin(selected_channels))
+    (marketing_df["channel"].isin(channels_sel))
 )
-if state_column_exists and selected_states:
-    mask_marketing &= marketing_df["state"].isin(selected_states)
-if campaign_column_exists and campaign_search_text:
-    mask_marketing &= marketing_df["campaign"].str.contains(campaign_search_text, case=False, na=False)
-marketing_filtered = marketing_df.loc[mask_marketing].copy()
+if states_exist and states_sel:
+    mask_mk &= marketing_df["state"].isin(states_sel)
+if campaign_exist and campaign_query:
+    mask_mk &= marketing_df["campaign"].str.contains(campaign_query, case=False, na=False)
+marketing_filtered = marketing_df.loc[mask_mk].copy()
 
-mask_marketing_daily = (
+mask_mk_daily = (
     (marketing_daily_df["date"] >= date_range[0]) &
     (marketing_daily_df["date"] <= date_range[1]) &
-    (marketing_daily_df["channel"].isin(selected_channels))
+    (marketing_daily_df["channel"].isin(channels_sel))
 )
-marketing_daily_filtered = marketing_daily_df.loc[mask_marketing_daily].copy()
+marketing_daily_filtered = marketing_daily_df.loc[mask_mk_daily].copy()
 
 mask_merged = (merged_df["date"] >= date_range[0]) & (merged_df["date"] <= date_range[1])
 merged_filtered = merged_df.loc[mask_merged].copy()
 
 # ----------------------- KPIs -----------------------
 st.header("Key Performance Indicators")
-col_k1, col_k2, col_k3, col_k4, col_k5 = st.columns(5)
-col_k1.metric("Total Revenue", f"${merged_filtered['total_revenue'].sum():,.0f}")
-col_k2.metric("Gross Profit", f"${merged_filtered['gross_profit'].sum():,.0f}")
-col_k3.metric("Marketing Spend", f"${merged_filtered['spend'].sum():,.0f}")
-roas_value = merged_filtered['attributed_revenue'].sum() / (merged_filtered['spend'].sum() or np.nan)
-col_k4.metric("ROAS", f"{roas_value:.2f}" if not np.isnan(roas_value) else "N/A")
-cac_value = merged_filtered['spend'].sum() / (merged_filtered['new_customers'].sum() or np.nan)
-col_k5.metric("CAC", f"${cac_value:.2f}" if not np.isnan(cac_value) else "N/A")
+k_a, k_b, k_c, k_d, k_e = st.columns(5)
+k_a.metric("Total Revenue", f"${merged_filtered['total_revenue'].sum():,.0f}")
+k_b.metric("Gross Profit", f"${merged_filtered['gross_profit'].sum():,.0f}")
+k_c.metric("Marketing Spend", f"${merged_filtered['spend'].sum():,.0f}")
+roas_val = merged_filtered['attributed_revenue'].sum() / (merged_filtered['spend'].sum() or np.nan)
+k_d.metric("ROAS", f"{roas_val:.2f}" if not np.isnan(roas_val) else "N/A")
+cac_val = merged_filtered['spend'].sum() / (merged_filtered['new_customers'].sum() or np.nan)
+k_e.metric("CAC", f"${cac_val:.2f}" if not np.isnan(cac_val) else "N/A")
 
 # ----------------------- Time series -----------------------
 st.header("Time Series: Spend vs Revenue vs Profit")
-time_series_df = merged_filtered[["date", "spend", "total_revenue", "gross_profit"]].sort_values("date")
-if apply_smoothing:
-    time_series_df = time_series_df.set_index("date").rolling(7, min_periods=1).mean().reset_index()
+ts_df = merged_filtered[["date", "spend", "total_revenue", "gross_profit"]].sort_values("date")
+if smooth_7:
+    ts_df = ts_df.set_index("date").rolling(7, min_periods=1).mean().reset_index()
 
-if time_series_style == "line":
+if ts_style == "line":
     fig_ts = go.Figure()
-    fig_ts.add_trace(go.Scatter(x=time_series_df["date"], y=time_series_df["spend"], name="Spend"))
-    fig_ts.add_trace(go.Scatter(x=time_series_df["date"], y=time_series_df["total_revenue"], name="Revenue"))
-    fig_ts.add_trace(go.Scatter(x=time_series_df["date"], y=time_series_df["gross_profit"], name="Gross Profit"))
-elif time_series_style == "area":
+    fig_ts.add_trace(go.Scatter(x=ts_df["date"], y=ts_df["spend"], name="Spend"))
+    fig_ts.add_trace(go.Scatter(x=ts_df["date"], y=ts_df["total_revenue"], name="Revenue"))
+    fig_ts.add_trace(go.Scatter(x=ts_df["date"], y=ts_df["gross_profit"], name="Gross Profit"))
+elif ts_style == "area":
     fig_ts = go.Figure()
-    fig_ts.add_trace(go.Scatter(x=time_series_df["date"], y=time_series_df["spend"], name="Spend", fill="tozeroy"))
-    fig_ts.add_trace(go.Scatter(x=time_series_df["date"], y=time_series_df["total_revenue"], name="Revenue", fill="tozeroy"))
-    fig_ts.add_trace(go.Scatter(x=time_series_df["date"], y=time_series_df["gross_profit"], name="Gross Profit", fill="tozeroy"))
+    fig_ts.add_trace(go.Scatter(x=ts_df["date"], y=ts_df["spend"], name="Spend", fill="tozeroy"))
+    fig_ts.add_trace(go.Scatter(x=ts_df["date"], y=ts_df["total_revenue"], name="Revenue", fill="tozeroy"))
+    fig_ts.add_trace(go.Scatter(x=ts_df["date"], y=ts_df["gross_profit"], name="Gross Profit", fill="tozeroy"))
 else:
-    fig_ts = px.area(time_series_df, x="date", y=["spend", "total_revenue", "gross_profit"])
+    fig_ts = px.area(ts_df, x="date", y=["spend", "total_revenue", "gross_profit"])
 
 fig_ts.update_layout(height=420, xaxis_title="Date", yaxis_title="USD")
 st.plotly_chart(fig_ts, use_container_width=True)
 
 # ----------------------- Channel comparison -----------------------
 st.header("Channel Comparison")
-channel_summary = marketing_daily_filtered.groupby("channel", as_index=False).agg({
+channel_agg = marketing_daily_filtered.groupby("channel", as_index=False).agg({
     "spend": "sum", "attributed_revenue": "sum", "impressions": "sum", "clicks": "sum"
 })
-channel_summary["roas"] = channel_summary["attributed_revenue"] / channel_summary["spend"].replace(0, np.nan)
-channel_summary["ctr"] = channel_summary["clicks"] / channel_summary["impressions"].replace(0, np.nan)
+channel_agg["roas"] = channel_agg["attributed_revenue"] / channel_agg["spend"].replace(0, np.nan)
+channel_agg["ctr"] = channel_agg["clicks"] / channel_agg["impressions"].replace(0, np.nan)
 
-left_col, right_col = st.columns([2, 1])
-with left_col:
-    st.plotly_chart(px.bar(channel_summary, x="channel", y=["spend", "attributed_revenue"], barmode="group"), use_container_width=True)
-with right_col:
-    st.plotly_chart(px.scatter(channel_summary, x="spend", y="roas", size="impressions", hover_name="channel"), use_container_width=True)
+left_c, right_c = st.columns([2, 1])
+with left_c:
+    fig_ch_bar = px.bar(channel_agg, x="channel", y=["spend", "attributed_revenue"], barmode="group", title="Spend vs Attributed Revenue")
+    st.plotly_chart(fig_ch_bar, use_container_width=True)
+with right_c:
+    fig_ch_scatter = px.scatter(channel_agg, x="spend", y="roas", size="impressions", hover_name="channel", title="Spend vs ROAS")
+    st.plotly_chart(fig_ch_scatter, use_container_width=True)
 
 # ----------------------- Funnel -----------------------
 st.header("Conversion Funnel")
-funnel_steps = [marketing_filtered["impressions"].sum(), marketing_filtered["clicks"].sum(), merged_filtered["orders"].sum()]
-st.plotly_chart(go.Figure(go.Funnel(y=["Impressions", "Clicks", "Orders"], x=funnel_steps)), use_container_width=True)
+funnel_vals = [marketing_filtered["impressions"].sum(), marketing_filtered["clicks"].sum(), merged_filtered["orders"].sum()]
+fig_funnel = go.Figure(go.Funnel(y=["Impressions", "Clicks", "Orders"], x=funnel_vals))
+st.plotly_chart(fig_funnel, use_container_width=True)
 
 # ----------------------- ROAS by state (optional) -----------------------
 st.header("ROAS by State (if available)")
 if "state" in marketing_df.columns:
-    state_summary = marketing_filtered.groupby(["state", "channel"], as_index=False).agg({"attributed_revenue": "sum", "spend": "sum"})
-    state_summary["roas"] = state_summary["attributed_revenue"] / state_summary["spend"].replace(0, np.nan)
-    if not state_summary.empty:
-        pivot_roas = state_summary.pivot(index="channel", columns="state", values="roas").fillna(0)
-        st.plotly_chart(px.imshow(pivot_roas, labels={"x": "State", "y": "Channel", "color": "ROAS"}), use_container_width=True)
+    state_df = marketing_filtered.groupby(["state", "channel"], as_index=False).agg({"attributed_revenue": "sum", "spend": "sum"})
+    state_df["roas"] = state_df["attributed_revenue"] / state_df["spend"].replace(0, np.nan)
+    if not state_df.empty:
+        pivot_roas = state_df.pivot(index="channel", columns="state", values="roas").fillna(0)
+        fig_state_heat = px.imshow(pivot_roas, labels={"x": "State", "y": "Channel", "color": "ROAS"})
+        st.plotly_chart(fig_state_heat, use_container_width=True)
     else:
         st.info("No state-level data for selected filters.")
 else:
@@ -233,35 +224,87 @@ else:
 
 # ----------------------- Anomaly alerts -----------------------
 st.header("Anomaly Alerts")
-avg_spend = marketing_daily_filtered["spend"].mean()
+mean_spend = marketing_daily_filtered["spend"].mean()
 std_spend = marketing_daily_filtered["spend"].std(ddof=0)
-spike_threshold = avg_spend + spend_spike_sigma * (std_spend or 0)
-spend_spikes_df = marketing_daily_filtered[marketing_daily_filtered["spend"] > spike_threshold].sort_values(["date", "spend"], ascending=[True, False])
-low_roas_days_df = merged_filtered[merged_filtered["roas"] < roas_threshold_flag].sort_values("date")
+spike_threshold = mean_spend + spend_sigma * (std_spend or 0)
+spend_spikes = marketing_daily_filtered[marketing_daily_filtered["spend"] > spike_threshold].sort_values(["date", "spend"], ascending=[True, False])
+low_roas_days = merged_filtered[merged_filtered["roas"] < roas_flag].sort_values("date")
 
-if not spend_spikes_df.empty:
+if not spend_spikes.empty:
     st.subheader("Spend spikes")
-    st.dataframe(spend_spikes_df[["date", "channel", "spend"]].reset_index(drop=True))
+    st.dataframe(spend_spikes[["date", "channel", "spend"]].reset_index(drop=True))
 else:
     st.info("No spend spikes detected with current threshold.")
 
-if not low_roas_days_df.empty:
+if not low_roas_days.empty:
     st.subheader("Low ROAS days")
-    st.dataframe(low_roas_days_df[["date", "spend", "attributed_revenue", "roas"]].reset_index(drop=True))
+    st.dataframe(low_roas_days[["date", "spend", "attributed_revenue", "roas"]].reset_index(drop=True))
 else:
     st.info("No low ROAS days detected with current threshold.")
 
 # ----------------------- Campaign leaderboard -----------------------
 st.header("Campaign Leaderboard")
 if "campaign" in marketing_df.columns:
-    campaign_summary_df = marketing_filtered.groupby(["campaign", "channel"], as_index=False).agg({
+    camp_summary = marketing_filtered.groupby(["campaign", "channel"], as_index=False).agg({
         "spend": "sum", "attributed_revenue": "sum", "impressions": "sum", "clicks": "sum"
     })
-    campaign_summary_df["roas"] = campaign_summary_df["attributed_revenue"] / campaign_summary_df["spend"].replace(0, np.nan)
-    st.dataframe(campaign_summary_df.sort_values("spend", ascending=False).reset_index(drop=True))
+    camp_summary["roas"] = camp_summary["attributed_revenue"] / camp_summary["spend"].replace(0, np.nan)
+    st.dataframe(camp_summary.sort_values("spend", ascending=False).reset_index(drop=True))
 else:
     st.info("Campaign column not found.")
 
-# ----------------------- Export CSV -----------------------
+# ----------------------- Export merged CSV -----------------------
 st.sidebar.header("Export")
 st.sidebar.download_button("Download merged CSV", data=merged_filtered.to_csv(index=False), file_name="merged_data.csv", mime="text/csv")
+
+# ----------------------- Image export helpers -----------------------
+def _fig_to_png_bytes(fig) -> bytes:
+    """
+    Convert a plotly figure to PNG bytes using kaleido.
+    Requires `kaleido` installed.
+    """
+    try:
+        img_bytes = fig.to_image(format="png", engine="kaleido", width=1200, height=500)
+        return img_bytes
+    except Exception as e:
+        raise RuntimeError(f"Failed to render figure to image. Ensure 'kaleido' is installed. Error: {e}")
+
+def _stitch_images_vertically(img_bytes_list: List[bytes], bg_color=(255,255,255)) -> bytes:
+    imgs = [Image.open(io.BytesIO(b)) for b in img_bytes_list]
+    widths = [im.width for im in imgs]
+    heights = [im.height for im in imgs]
+    max_width = max(widths)
+    total_height = sum(heights)
+    canvas = Image.new('RGB', (max_width, total_height), color=bg_color)
+    y = 0
+    for im in imgs:
+        canvas.paste(im, (0, y))
+        y += im.height
+    buf = io.BytesIO()
+    canvas.save(buf, format="PNG")
+    return buf.getvalue()
+
+# ----------------------- Export report as image -----------------------
+st.sidebar.markdown("Report snapshot")
+if st.sidebar.button("Generate PNG report"):
+    try:
+        # collect figures to include
+        figs = []
+        figs.append(fig_ts)          # time series
+        figs.append(fig_ch_bar)      # channel bar
+        figs.append(fig_ch_scatter)  # channel scatter
+        figs.append(fig_funnel)      # funnel
+        # optional heatmap
+        if "fig_state_heat" in locals():
+            figs.append(fig_state_heat)
+        # convert each fig to png
+        png_bytes_list = []
+        for f in figs:
+            png_bytes_list.append(_fig_to_png_bytes(f))
+        stitched = _stitch_images_vertically(png_bytes_list)
+        st.sidebar.download_button("Download PNG report", data=stitched, file_name="marketing_report.png", mime="image/png")
+        st.sidebar.success("PNG report ready for download.")
+    except Exception as err:
+        st.sidebar.error(f"Image generation failed: {err}")
+# ----------------------- End -----------------------
+
