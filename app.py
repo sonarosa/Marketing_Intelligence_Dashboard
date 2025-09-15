@@ -219,7 +219,7 @@ fig_funnel = go.Figure(go.Funnel(y=["Impressions", "Clicks", "Orders"], x=funnel
 st.plotly_chart(fig_funnel, use_container_width=True)
 
 # ----------------------- ROAS by state (optional) -----------------------
-st.header("ROAS by State (if available)")
+st.header("ROAS by State")
 if "state" in marketing_df.columns:
     state_df = marketing_filtered.groupby(["state", "channel"], as_index=False).agg({"attributed_revenue": "sum", "spend": "sum"})
     state_df["roas"] = state_df["attributed_revenue"] / state_df["spend"].replace(0, np.nan)
@@ -266,3 +266,5 @@ else:
 # ----------------------- Export merged CSV -----------------------
 st.sidebar.header("Export")
 st.sidebar.download_button("Download merged CSV", data=merged_filtered.to_csv(index=False), file_name="merged_data.csv", mime="text/csv")
+# ----------------------- Footer -----------------------
+st.markdown("---")
