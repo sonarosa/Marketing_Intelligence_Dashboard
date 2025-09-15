@@ -20,7 +20,7 @@ import plotly.graph_objects as go
 st.set_page_config(layout="wide", page_title="Marketing Intelligence Dashboard")
 
 # ------------------- Header -------------------
-st.title("📊 Marketing Intelligence Dashboard")
+st.title("Marketing Intelligence Dashboard")
 st.markdown("Automatically loading data from the `datasets/` folder. Place your CSVs there and reload the app.")
 
 # ------------------- Dataset paths & checks -------------------
